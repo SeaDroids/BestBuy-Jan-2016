@@ -1,0 +1,139 @@
+import java.text.SimpleDateFormat
+
+apply plugin: 'com.android.application'
+
+ext {
+    gitHash = "${gitSha()}"
+   
+    buildTimestamp = buildVersionCode()
+
+    // To use this, add '-PCI_BUILD=true' to the command line when building.
+    isCIBuild = project.hasProperty('CI_BUILD');
+}
+
+android {
+    compileSdkVersion 23
+    buildToolsVersion "23.0.2"
+
+    defaultConfig {
+        applicationId "my.sample.androidmeetup"
+        minSdkVersion 21
+        targetSdkVersion 23
+        versionCode buildTimestamp
+        versionName "1.0"
+
+        if (isCIBuild) {
+            // When using this property, make sure the Android gradle plugin is at least version 1.3.1
+            setProperty("archivesBaseName", "sample-${versionName}-${versionCode}-${gitHash}")
+        }
+
+        // This field will be added to the generated BuildConfig class and can be displayed somewhere
+        // in the UI if desired to ensure that any binary can be traced back to the exact code used
+        buildConfigField "String", "GIT_SHA", "\"${gitHash}\""
+
+    }
+
+    signingConfigs {
+        release {
+            // The keystore file is intentionally outside the project directory to make sure it never
+            // gets committed to the project source control
+            storeFile file("../../sample-keystore/sample.keystore")
+            if (project.hasProperty("sampleStorePassword")) {
+                storePassword sampleStorePassword
+            } else {
+                storePassword ""
+            }
+            if (project.hasProperty("sampleKeyAlias")) {
+                keyAlias sampleKeyAlias
+            } else {
+                keyAlias ""
+            }
+            if (project.hasProperty("sampleKeyPassword")) {
+                keyPassword sampleKeyPassword
+            } else {
+                keyPassword ""
+            }
+        }
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled true
+            proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
+
+            debuggable false
+
+            signingConfig signingConfigs.release
+        }
+    }
+
+    lintOptions {
+        disable 'InvalidPackage'
+        enable 'LogConditional', 'NegativeMargin'
+    }
+
+    applicationVariants.all { variant ->
+
+        // This block will be printed out for all variants, not just the current build target.
+        // Printing out only the current build target is left as an exercise for the reader
+        println ()
+        println ("BUILD INFO")
+        println ("==========")
+        println ("variant = ${variant.name}")
+        println ("version = ${variant.versionName}")
+        println ("versionCode = ${variant.versionCode}")
+        println ("baseName = ${archivesBaseName}")
+
+        variant.outputs.each { output ->
+
+            println ("outputFile = ${output.outputFile.name}")
+
+            if (variant.buildType.minifyEnabled) {
+                def newMappingName = output.outputFile.name.replace(".apk", "-mapping.txt")
+
+                variant.assemble.doLast {
+
+                    copy {
+                        from variant.mappingFile
+                        into output.outputFile.parent
+                        rename { String fileName -> newMappingName }
+                    }
+                }
+            }
+        }
+
+        println ()
+    }
+
+
+}
+
+dependencies {
+
+    testCompile 'junit:junit:4.12'
+
+    compile fileTree(dir: 'libs', include: ['*.jar'])
+
+    // Android Design Library for Material support.
+    compile 'com.android.support:design:23.1.1'
+
+    // Appcompat baby
+    compile 'com.android.support:appcompat-v7:23.1.1'
+
+}
+
+def gitSha() {
+    // This command may require tweaking for a specific environment in order to find the git executable
+    return "git rev-parse --short HEAD".execute().text.trim()
+}
+
+// This method provides a versionCode value that is always increasing and does not require
+// any human intervention to update.  It also does not require any intermediate storage of
+// build number or version code values.  It only requires a stable clock on the build machine.
+// It will generate duplicate values if the project is built more frequently than once a minute.
+def buildVersionCode() {
+    def df = new SimpleDateFormat("yyDDDHHmm");
+    df.setTimeZone(TimeZone.getTimeZone("UTC"))
+    return df.format(new Date()).toInteger()
+}
+
